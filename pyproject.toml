@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "base-ml-project"
+version = "0.1.0"
+description = ""
+authors = ["IgorDiamandi <161752477+IgorDiamandi@users.noreply.github.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pandas = "^2.2.2"
+scikit-learn = "^1.5.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

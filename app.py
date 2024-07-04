@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pandas as pd
 import zipfile
 from sklearn.model_selection import train_test_split
@@ -10,7 +12,7 @@ from data_functions import get_rmse
 
 level_of_parallelism: int = 20
 number_of_trees: int = 20
-tree_depth: int = 15
+tree_depth = [19]
 
 dtype_spec = {
     'Column13': 'str',
@@ -27,6 +29,37 @@ with zipfile.ZipFile('Data\\train.zip', 'r') as z:
 
     with z.open('train.csv') as f:
         df = pd.read_csv(f, dtype=dtype_spec, low_memory=False).sample(frac=0.2)
+
+#region Converting MachineId to Sales count indicator
+#Values before:
+#   RMSE Test - 9248.747255468013
+#   RMSE Train - 6097.347739028608
+
+#Values after:
+#   RMSE Test - 9044.223520191144
+#   RMSE Train - 6165.942974191791
+
+machine_id_counts = df['MachineID'].value_counts().reset_index()
+machine_id_counts.columns = ['MachineID', 'MachineID_Count']
+df = df.merge(machine_id_counts, on='MachineID', how='left').drop('MachineID', axis=1)
+#endregion
+
+
+#region Converting TearMade to MachineAge
+#Values before:
+#   RMSE Test - 9248.747255468013
+#   RMSE Train - 6097.347739028608
+
+#Values after:
+#   RMSE Test - 8748.603071083166
+#   RMSE Train - 6025.923618598418
+df['MachineAge'] = datetime.now().year - df['YearMade']
+df = df.drop('YearMade', axis=1)
+#endregion
+
+
+print(df.info())
+print(df.head())
 
 # Identifying features and target
 target = 'SalePrice'
@@ -54,9 +87,12 @@ for col in date_cols:
     features[col + '_day'] = features[col].dt.day
     features.drop(columns=[col], inplace=True)
 
+
 # Updating the list of numeric and categorical columns after date transformation
 numeric_cols = features.select_dtypes(include=['number']).columns
 categorical_cols = features.select_dtypes(include=['object', 'category']).columns
+
+
 
 # Preprocessing dataset
 preprocessor = ColumnTransformer(
@@ -69,26 +105,28 @@ preprocessor = ColumnTransformer(
 X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2, random_state=42)
 
 # Model pipeline
-model = Pipeline(steps=[
-    ('preprocessor', preprocessor),
-    ('regressor', RandomForestRegressor(
-        random_state=42,
-        n_jobs=level_of_parallelism,
-        n_estimators=number_of_trees,
-        max_depth=tree_depth))
-])
+for number in tree_depth:
+    model = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('regressor', RandomForestRegressor(
+            random_state=42,
+            n_jobs=level_of_parallelism,
+            n_estimators=number_of_trees,
+            max_depth=number))
+    ])
 
-print('Fitting')
-# Training the model
-model.fit(X_train, y_train)
+    print('Fitting')
+    # Training the model
+    model.fit(X_train, y_train)
 
-print('Testing')
-# Predictions
-y_train_pred = model.predict(X_train)
-y_test_pred = model.predict(X_test)
+    print('Testing')
+    # Predictions
+    y_train_pred = model.predict(X_train)
+    y_test_pred = model.predict(X_test)
 
-# Evaluation
-print(f'STD Test - {y_test.std()}')
-print(f'STD Train - {y_train.std()}')
-print(f'RMSE Test - {get_rmse(y_test, y_test_pred)}')
-print(f'RMSE Train - {get_rmse(y_train, y_train_pred)}')
+    # Evaluation
+    print(f'Tree deepness - {number}')
+    print(f'STD Test - {y_test.std()}')
+    print(f'STD Train - {y_train.std()}')
+    print(f'RMSE Test - {get_rmse(y_test, y_test_pred)}')
+    print(f'RMSE Train - {get_rmse(y_train, y_train_pred)}')

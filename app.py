@@ -8,7 +8,7 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 
-from data_functions import get_rmse
+from data_functions import get_rmse, handle_outliers_iqr, handle_outliers_zscore, replace_outliers_with_mean
 
 level_of_parallelism: int = 20
 number_of_trees: int = 20
@@ -30,6 +30,7 @@ with zipfile.ZipFile('Data\\train.zip', 'r') as z:
     with z.open('train.csv') as f:
         df = pd.read_csv(f, dtype=dtype_spec, low_memory=False).sample(frac=0.2)
 
+
 #region Converting MachineId to Sales count indicator
 #Values before:
 #   RMSE Test - 9248.747255468013
@@ -45,7 +46,7 @@ df = df.merge(machine_id_counts, on='MachineID', how='left').drop('MachineID', a
 #endregion
 
 
-#region Converting TearMade to MachineAge
+#region #region Converting TearMade to MachineAge and cleaning up corrupted values (1000)
 #Values before:
 #   RMSE Test - 9248.747255468013
 #   RMSE Train - 6097.347739028608
@@ -55,11 +56,25 @@ df = df.merge(machine_id_counts, on='MachineID', how='left').drop('MachineID', a
 #   RMSE Train - 6025.923618598418
 df['MachineAge'] = datetime.now().year - df['YearMade']
 df = df.drop('YearMade', axis=1)
+df = replace_outliers_with_mean(df, ['MachineAge'], 1)
 #endregion
 
 
-print(df.info())
-print(df.head())
+#region Handle Outliers
+# Z-Scpe
+#   RMSE Test - 8297.584620069067
+#   RMSE Train - 5650.593501852877
+#df = handle_outliers_zscore(df, 'MachineAge')
+
+# IQR
+#   RMSE Test - 7728.819411240749
+#   RMSE Train - 5476.9643613648
+df = handle_outliers_iqr(df, ['SalePrice', 'MachineHoursCurrentMeter'])
+
+#endregion
+print(df['MachineAge'].value_counts())
+#print(df.info())
+#print(df.head())
 
 # Identifying features and target
 target = 'SalePrice'
@@ -87,12 +102,9 @@ for col in date_cols:
     features[col + '_day'] = features[col].dt.day
     features.drop(columns=[col], inplace=True)
 
-
 # Updating the list of numeric and categorical columns after date transformation
 numeric_cols = features.select_dtypes(include=['number']).columns
 categorical_cols = features.select_dtypes(include=['object', 'category']).columns
-
-
 
 # Preprocessing dataset
 preprocessor = ColumnTransformer(

@@ -1,5 +1,4 @@
 from datetime import datetime
-
 import pandas as pd
 import zipfile
 from sklearn.model_selection import train_test_split
@@ -7,8 +6,8 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-
-from data_functions import get_rmse, handle_outliers_iqr, handle_outliers_zscore, replace_outliers_with_mean
+from data_functions import get_rmse, handle_outliers_iqr, handle_outliers_zscore, replace_outliers_with_mean, \
+    replace_null_with_mean, remove_columns_with_many_nulls
 
 level_of_parallelism: int = 20
 number_of_trees: int = 20
@@ -30,51 +29,26 @@ with zipfile.ZipFile('Data\\train.zip', 'r') as z:
     with z.open('train.csv') as f:
         df = pd.read_csv(f, dtype=dtype_spec, low_memory=False).sample(frac=0.2)
 
-
 #region Converting MachineId to Sales count indicator
-#Values before:
-#   RMSE Test - 9248.747255468013
-#   RMSE Train - 6097.347739028608
-
-#Values after:
-#   RMSE Test - 9044.223520191144
-#   RMSE Train - 6165.942974191791
-
 machine_id_counts = df['MachineID'].value_counts().reset_index()
 machine_id_counts.columns = ['MachineID', 'MachineID_Count']
 df = df.merge(machine_id_counts, on='MachineID', how='left').drop('MachineID', axis=1)
 #endregion
 
-
-#region #region Converting TearMade to MachineAge and cleaning up corrupted values (1000)
-#Values before:
-#   RMSE Test - 9248.747255468013
-#   RMSE Train - 6097.347739028608
-
-#Values after:
-#   RMSE Test - 8748.603071083166
-#   RMSE Train - 6025.923618598418
+#region Converting YearMade to MachineAge and cleaning up corrupted values (1000)
 df['MachineAge'] = datetime.now().year - df['YearMade']
 df = df.drop('YearMade', axis=1)
 df = replace_outliers_with_mean(df, ['MachineAge'], 1)
 #endregion
 
-
 #region Handle Outliers
-# Z-Scpe
-#   RMSE Test - 8297.584620069067
-#   RMSE Train - 5650.593501852877
-#df = handle_outliers_zscore(df, 'MachineAge')
-
-# IQR
-#   RMSE Test - 7728.819411240749
-#   RMSE Train - 5476.9643613648
 df = handle_outliers_iqr(df, ['SalePrice', 'MachineHoursCurrentMeter'])
-
+df = replace_null_with_mean(df, ['MachineHoursCurrentMeter'])
 #endregion
-print(df['MachineAge'].value_counts())
-#print(df.info())
-#print(df.head())
+
+#region removing columns with manu nulls
+remove_columns_with_many_nulls(df, 0.5)
+#endregion
 
 # Identifying features and target
 target = 'SalePrice'
@@ -93,7 +67,6 @@ features[non_numeric_cols] = features[non_numeric_cols].fillna(features[non_nume
 categorical_cols = features.select_dtypes(include=['object', 'category']).columns
 
 # Converting date columns (example assuming you have date columns)
-# Here we assume columns with "date" in their name are date columns
 date_cols = [col for col in features.columns if 'date' in col.lower()]
 for col in date_cols:
     features[col] = pd.to_datetime(features[col], errors='coerce')
@@ -137,8 +110,23 @@ for number in tree_depth:
     y_test_pred = model.predict(X_test)
 
     # Evaluation
-    print(f'Tree deepness - {number}')
+    print(f'Tree depth - {number}')
     print(f'STD Test - {y_test.std()}')
     print(f'STD Train - {y_train.std()}')
     print(f'RMSE Test - {get_rmse(y_test, y_test_pred)}')
     print(f'RMSE Train - {get_rmse(y_train, y_train_pred)}')
+
+    # Extracting the RandomForestRegressor from the pipeline to access feature importances
+    regressor = model.named_steps['regressor']
+    feature_importances = regressor.feature_importances_
+
+    # Creating a DataFrame for feature importances
+    feature_names = numeric_cols.tolist() + model.named_steps['preprocessor']\
+                                          .transformers_[1][1].get_feature_names_out(categorical_cols).tolist()
+    feature_importance_df = pd.DataFrame({
+        'Feature': feature_names,
+        'Importance': feature_importances
+    }).sort_values(by='Importance', ascending=False)
+
+    print("Feature Importances:")
+    print(feature_importance_df)

@@ -1,10 +1,9 @@
+import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.inspection import permutation_importance
 from data_functions import get_rmse
-import pandas as pd
 
 
 def create_preprocessor(X):
@@ -20,10 +19,17 @@ def create_preprocessor(X):
     return preprocessor
 
 
+def get_feature_names(preprocessor):
+    numeric_features = preprocessor.transformers_[0][2]
+    cat_features = preprocessor.transformers_[1][1].get_feature_names_out(preprocessor.transformers_[1][2])
+    return numeric_features.tolist() + cat_features.tolist()
+
+
 def train_and_evaluate_model(X_train, X_test, y_train, y_test, tree_depth, level_of_parallelism, number_of_trees):
     for depth in tree_depth:
+        preprocessor = create_preprocessor(X_train)
         model = Pipeline(steps=[
-            ('preprocessor', create_preprocessor(X_train)),
+            ('preprocessor', preprocessor),
             ('regressor', RandomForestRegressor(
                 random_state=100,
                 n_jobs=level_of_parallelism,
@@ -38,35 +44,25 @@ def train_and_evaluate_model(X_train, X_test, y_train, y_test, tree_depth, level
         y_train_pred = model.predict(X_train)
         y_test_pred = model.predict(X_test)
 
+        rmse_test = get_rmse(y_test, y_test_pred)
+        rmse_train = get_rmse(y_train, y_train_pred)
+
         print(f'Tree depth - {depth}')
         print(f'STD Test - {y_test.std()}')
         print(f'STD Train - {y_train.std()}')
-        print(f'RMSE Test - {get_rmse(y_test, y_test_pred)}')
-        print(f'RMSE Train - {get_rmse(y_train, y_train_pred)}')
+        print(f'RMSE Test - {rmse_test}')
+        print(f'RMSE Train - {rmse_train}')
 
-        # Extracting the RandomForestRegressor from the pipeline to access feature importances
-        regressor = model.named_steps['regressor']
-        feature_importances_tree = regressor.feature_importances_
+        # Feature importance check
+        #regressor = model.named_steps['regressor']
+        #feature_importances = regressor.feature_importances_
+        #feature_names = get_feature_names(preprocessor, X_train)
+        #feature_importance_df = pd.DataFrame({
+        #    'Feature': feature_names,
+        #    'Importance': feature_importances
+        #}).sort_values(by='Importance', ascending=False)
 
-        # Calculate permutation importances
-        result = permutation_importance(model, X_test, y_test, n_repeats=10, random_state=42, n_jobs=-1)
+        #print("Feature Importances:")
+        #print(feature_importance_df)
 
-        # Getting the feature names from the preprocessor
-        preprocessor = model.named_steps['preprocessor']
-        numeric_features = preprocessor.transformers_[0][2]
-        categorical_features = preprocessor.transformers_[1][1].get_feature_names_out(preprocessor.transformers_[1][2])
-        feature_names = list(numeric_features) + list(categorical_features)
-
-        # Check lengths of feature importances arrays
-        if len(feature_names) != len(feature_importances_tree) or len(feature_names) != len(result.importances_mean):
-            raise ValueError("Mismatch between feature names and feature importances lengths.")
-
-        # Creating a DataFrame for feature importances
-        feature_importances = pd.DataFrame({
-            'Feature': feature_names,
-            'Permutation Importance': result.importances_mean,
-            'Tree-based Importance': feature_importances_tree
-        }).sort_values(by='Permutation Importance', ascending=False)
-
-        print("Feature Importances:")
-        print(feature_importances)
+    return model

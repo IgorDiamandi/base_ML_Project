@@ -1,5 +1,15 @@
+import zipfile
+from datetime import datetime
 import numpy as np
 from scipy.stats import zscore
+import pandas as pd
+
+DTYPE_SPEC = {
+    'fiModelDescriptor': 'str',
+    'Hydraulics_Flow': 'str',
+    'Track_Type': 'str',
+    'Undercarriage_Pad_Width': 'str'
+}
 
 def get_rmse(y_test, y_pred):
     return ((y_test - y_pred) ** 2).mean() ** 0.5
@@ -28,6 +38,16 @@ def handle_outliers_zscore(df, columns, threshold=3):
         df = df[filtered_entries]
     return df
 
+# Function to handle outliers using 6-Sigma method
+def handle_outliers_six_sigma(df, columns):
+    for column in columns:
+        mean = df[column].mean()
+        std = df[column].std()
+        lower_bound = mean - 3 * std
+        upper_bound = mean + 3 * std
+        outliers = (df[column] < lower_bound) | (df[column] > upper_bound)
+        df.loc[outliers, column] = mean
+    return df
 
 def mean_without_extremums(df, column):
     Q1 = df[column].quantile(0.25)
@@ -63,11 +83,85 @@ def remove_columns_with_many_nulls(df, threshold=0.5):
 
 def replace_null_with_mean(df, columns):
     for column in columns:
-        if column in df.columns:
-            mean_value = df[column].mean()
-            df[column].fillna(mean_value, inplace=True)
-        else:
-            print(f"Column '{column}' not found in DataFrame")
+        mean_value = df[column].mean()
+        df[column].fillna(mean_value, inplace=True)
+    return df
+
+def load_and_extract_data(zip_path, extract_path):
+    print('Loading data...')
+    with zipfile.ZipFile(zip_path, 'r') as z:
+        z.printdir()
+        z.extractall(extract_path)
+        with z.open('train.csv') as f:
+            df = pd.read_csv(f, dtype=DTYPE_SPEC, low_memory=False)
     return df
 
 
+def preprocess_data(df, dropped_coumns):
+    df = df.set_index('SalesID')
+
+    # Converting MachineId to Sales count indicator
+    machine_id_counts = df['MachineID'].value_counts().reset_index()
+    machine_id_counts.columns = ['MachineID', 'MachineID_Count']
+    df = df.merge(machine_id_counts, on='MachineID', how='left').drop('MachineID', axis=1)
+    # Converting YearMade to MachineAge and cleaning up corrupted values
+    df['MachineAge'] = datetime.now().year - df['YearMade']
+    df = df.drop(['YearMade'], axis=1)
+    df = replace_outliers_with_mean(df, ['MachineAge'], 1)
+
+    # Handle outliers and missing values
+    df = handle_outliers_iqr(df, ['SalePrice', 'MachineHoursCurrentMeter'])
+    df = replace_null_with_mean(df, ['MachineHoursCurrentMeter'])
+
+    # Dropping irrelevant columns
+    df = df.drop(dropped_coumns, axis=1)
+    df = remove_columns_with_many_nulls(df, 0.7)
+
+    return df
+
+
+def handle_missing_values(features):
+    numeric_cols = features.select_dtypes(include=['number']).columns
+    non_numeric_cols = features.select_dtypes(exclude=['number']).columns
+
+    features[numeric_cols] = features[numeric_cols].fillna(features[numeric_cols].median())
+    features[non_numeric_cols] = features[non_numeric_cols].fillna(features[non_numeric_cols].mode().iloc[0])
+
+    return features
+
+
+def encode_categorical_variables(features):
+    categorical_cols = features.select_dtypes(include=['object', 'category']).columns
+
+    # Convert date columns to separate year, month, and day columns
+    date_cols = [col for col in features.columns if 'date' in col.lower()]
+    for col in date_cols:
+        features[col] = pd.to_datetime(features[col], errors='coerce')
+        features[col + '_year'] = features[col].dt.year
+        features[col + '_month'] = features[col].dt.month
+        features[col + '_day'] = features[col].dt.day
+        features.drop(columns=[col], inplace=True)
+
+    return features
+
+def preprocess_validation_data(df, dropped_coumns):
+    #df = df.set_index('SalesID')
+
+    # Converting MachineId to Sales count indicator
+    machine_id_counts = df['MachineID'].value_counts().reset_index()
+    machine_id_counts.columns = ['MachineID', 'MachineID_Count']
+    df = df.merge(machine_id_counts, on='MachineID', how='left').drop('MachineID', axis=1)
+    # Converting YearMade to MachineAge and cleaning up corrupted values
+    df['MachineAge'] = datetime.now().year - df['YearMade']
+    df = df.drop(['YearMade'], axis=1)
+    df = replace_outliers_with_mean(df, ['MachineAge'], 1)
+
+    # Handle outliers and missing values
+    df = handle_outliers_iqr(df, ['MachineHoursCurrentMeter'])
+    df = replace_null_with_mean(df, ['MachineHoursCurrentMeter'])
+
+    # Dropping irrelevant columns
+    df = df.drop(dropped_coumns, axis=1)
+    df = remove_columns_with_many_nulls(df, 0.7)
+
+    return df

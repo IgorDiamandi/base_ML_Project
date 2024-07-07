@@ -69,3 +69,5 @@ def replace_null_with_mean(df, columns):
         else:
             print(f"Column '{column}' not found in DataFrame")
     return df
+
+

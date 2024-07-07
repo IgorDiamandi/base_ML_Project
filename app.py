@@ -2,12 +2,9 @@ from datetime import datetime
 import pandas as pd
 import zipfile
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from data_functions import get_rmse, handle_outliers_iqr, handle_outliers_zscore, replace_outliers_with_mean, \
+from data_functions import handle_outliers_iqr, handle_outliers_zscore, replace_outliers_with_mean, \
     remove_columns_with_many_nulls, replace_null_with_mean
+from model_functions import train_and_evaluate_model
 
 # Constants
 LEVEL_OF_PARALLELISM = 20
@@ -85,8 +82,6 @@ def encode_categorical_variables(features):
     return features
 
 
-
-
 df = load_and_extract_data(DATA_PATH, EXTRACT_PATH)
 df = preprocess_data(df)
 df.to_csv(OUTPUT_PATH, index=False)
@@ -98,4 +93,4 @@ features = encode_categorical_variables(features)
 
 X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.3, random_state=42)
 
-train_and_evaluate_model(X_train, X_test, y_train, y_test, TREE_DEPTH)
+train_and_evaluate_model(X_train, X_test, y_train, y_test, TREE_DEPTH, LEVEL_OF_PARALLELISM, NUMBER_OF_TREES)

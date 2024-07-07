@@ -1,5 +1,10 @@
 from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
+
+from app import LEVEL_OF_PARALLELISM, NUMBER_OF_TREES
+from data_functions import get_rmse
 
 
 def create_preprocessor(features):

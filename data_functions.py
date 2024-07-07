@@ -51,3 +51,21 @@ def replace_outliers_with_mean(df, columns, threshold=3):
         df.loc[outliers, column] = mean_value
 
     return df
+
+
+def remove_columns_with_many_nulls(df, threshold=0.5):
+    null_percentage = df.isnull().mean()
+    columns_to_remove = null_percentage[null_percentage > threshold].index
+    df_cleaned = df.drop(columns=columns_to_remove)
+
+    return df_cleaned
+
+
+def replace_null_with_mean(df, columns):
+    for column in columns:
+        if column in df.columns:
+            mean_value = df[column].mean()
+            df[column].fillna(mean_value, inplace=True)
+        else:
+            print(f"Column '{column}' not found in DataFrame")
+    return df

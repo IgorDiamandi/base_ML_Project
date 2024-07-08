@@ -6,8 +6,11 @@ from model_functions import train_and_evaluate_model
 
 # Constants
 LEVEL_OF_PARALLELISM = 20
-NUMBER_OF_TREES = 100
-TREE_DEPTH = [20]
+NUMBER_OF_TREES = 20
+TREE_DEPTH = [17]
+MIN_SAMPLES_SPLIT = 3
+MIN_SAMPLES_LEAF = 3
+MAX_FEATURES = 0.8
 DATA_PATH = 'Data\\train.zip'
 EXTRACT_PATH = 'Data'
 OUTPUT_PATH = 'Data\\fixed.csv'
@@ -27,7 +30,8 @@ features.to_csv(OUTPUT_PATH, index=False)
 
 X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.3, random_state=100)
 
-model = train_and_evaluate_model(X_train, X_test, y_train, y_test, TREE_DEPTH, LEVEL_OF_PARALLELISM, NUMBER_OF_TREES)
+model = train_and_evaluate_model(X_train, X_test, y_train, y_test, TREE_DEPTH, LEVEL_OF_PARALLELISM, NUMBER_OF_TREES,
+                                 MIN_SAMPLES_LEAF, MIN_SAMPLES_SPLIT, MAX_FEATURES)
 
 #Use model on the validation data
 df_valid = pd.read_csv('Data\\valid.csv')

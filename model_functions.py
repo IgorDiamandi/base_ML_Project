@@ -25,7 +25,8 @@ def get_feature_names(preprocessor):
     return numeric_features.tolist() + cat_features.tolist()
 
 
-def train_and_evaluate_model(X_train, X_test, y_train, y_test, tree_depth, level_of_parallelism, number_of_trees):
+def train_and_evaluate_model(X_train, X_test, y_train, y_test, tree_depth, level_of_parallelism, number_of_trees,
+                             min_samples_split, min_samples_leaf, max_features):
     for depth in tree_depth:
         preprocessor = create_preprocessor(X_train)
         model = Pipeline(steps=[
@@ -34,7 +35,10 @@ def train_and_evaluate_model(X_train, X_test, y_train, y_test, tree_depth, level
                 random_state=100,
                 n_jobs=level_of_parallelism,
                 n_estimators=number_of_trees,
-                max_depth=depth))
+                max_depth=depth,
+                min_samples_leaf=min_samples_leaf,
+                min_samples_split=min_samples_split,
+                max_features=max_features))
         ])
 
         print('Fitting the model...')
@@ -54,15 +58,15 @@ def train_and_evaluate_model(X_train, X_test, y_train, y_test, tree_depth, level
         print(f'RMSE Train - {rmse_train}')
 
         # Feature importance check
-        #regressor = model.named_steps['regressor']
-        #feature_importances = regressor.feature_importances_
-        #feature_names = get_feature_names(preprocessor, X_train)
-        #feature_importance_df = pd.DataFrame({
-        #    'Feature': feature_names,
-        #    'Importance': feature_importances
-        #}).sort_values(by='Importance', ascending=False)
+        regressor = model.named_steps['regressor']
+        feature_importances = regressor.feature_importances_
+        feature_names = get_feature_names(preprocessor)
+        feature_importance_df = pd.DataFrame({
+            'Feature': feature_names,
+            'Importance': feature_importances
+        }).sort_values(by='Importance', ascending=False)
 
-        #print("Feature Importances:")
-        #print(feature_importance_df)
+        print("Feature Importances:")
+        print(feature_importance_df)
 
     return model

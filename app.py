@@ -6,10 +6,10 @@ from model_functions import train_and_evaluate_model
 
 # Constants
 LEVEL_OF_PARALLELISM = 20
-NUMBER_OF_TREES = 20
-TREE_DEPTH = [17]
-MIN_SAMPLES_SPLIT = 3
-MIN_SAMPLES_LEAF = 3
+NUMBER_OF_TREES = 100
+TREE_DEPTH = [20]
+MIN_SAMPLES_SPLIT = 2
+MIN_SAMPLES_LEAF = 2
 MAX_FEATURES = 0.8
 DATA_PATH = 'Data\\train.zip'
 EXTRACT_PATH = 'Data'
@@ -49,4 +49,5 @@ df_predictions = pd.DataFrame({
 })
 
 # Save predictions
+df_valid.to_csv('Data\\df_valid.csv', index=False)
 df_predictions.to_csv('Data\\valid_predictions.csv', index=False)

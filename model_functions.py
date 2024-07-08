@@ -58,15 +58,15 @@ def train_and_evaluate_model(X_train, X_test, y_train, y_test, tree_depth, level
         print(f'RMSE Train - {rmse_train}')
 
         # Feature importance check
-        regressor = model.named_steps['regressor']
-        feature_importances = regressor.feature_importances_
-        feature_names = get_feature_names(preprocessor)
-        feature_importance_df = pd.DataFrame({
-            'Feature': feature_names,
-            'Importance': feature_importances
-        }).sort_values(by='Importance', ascending=False)
+        #regressor = model.named_steps['regressor']
+        #feature_importances = regressor.feature_importances_
+        #feature_names = get_feature_names(preprocessor)
+        #feature_importance_df = pd.DataFrame({
+        #    'Feature': feature_names,
+        #    'Importance': feature_importances
+        #}).sort_values(by='Importance', ascending=False)
 
-        print("Feature Importances:")
-        print(feature_importance_df)
+        #print("Feature Importances:")
+        #print(feature_importance_df)
 
     return model

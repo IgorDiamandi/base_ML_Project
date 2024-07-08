@@ -7,10 +7,11 @@ from model_functions import train_and_evaluate_model
 # Constants
 LEVEL_OF_PARALLELISM = 20
 NUMBER_OF_TREES = 100
-TREE_DEPTH = [20]
-MIN_SAMPLES_SPLIT = 2
-MIN_SAMPLES_LEAF = 2
-MAX_FEATURES = 0.8
+TREE_DEPTH = [10]
+MIN_SAMPLES_SPLIT = 7
+MIN_SAMPLES_LEAF = 5
+MAX_FEATURES = 0.6
+BOOTSTRAP = False
 DATA_PATH = 'Data\\train.zip'
 EXTRACT_PATH = 'Data'
 OUTPUT_PATH = 'Data\\fixed.csv'
@@ -19,7 +20,6 @@ TARGET_COLUMN = 'SalePrice'
 
 df = load_and_extract_data(DATA_PATH, EXTRACT_PATH)
 df = preprocess_data(df, DROPPED_COLUMNS)
-df.to_csv(OUTPUT_PATH, index=False)
 
 target = df[TARGET_COLUMN]
 features = df.drop(columns=[TARGET_COLUMN])
@@ -31,7 +31,7 @@ features.to_csv(OUTPUT_PATH, index=False)
 X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.3, random_state=100)
 
 model = train_and_evaluate_model(X_train, X_test, y_train, y_test, TREE_DEPTH, LEVEL_OF_PARALLELISM, NUMBER_OF_TREES,
-                                 MIN_SAMPLES_LEAF, MIN_SAMPLES_SPLIT, MAX_FEATURES)
+                                 MIN_SAMPLES_LEAF, MIN_SAMPLES_SPLIT, MAX_FEATURES, BOOTSTRAP)
 
 #Use model on the validation data
 df_valid = pd.read_csv('Data\\valid.csv')

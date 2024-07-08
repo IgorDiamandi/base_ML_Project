@@ -138,7 +138,7 @@ def encode_categorical_variables(features):
 
 
 def preprocess_data(df, dropped_coumns):
-    df = df.set_index('SalesID')
+    #df = df.set_index('SalesID')
 
     # Converting MachineId to Sales count indicator
     machine_id_counts = df['MachineID'].value_counts().reset_index()
@@ -154,8 +154,8 @@ def preprocess_data(df, dropped_coumns):
     df = replace_null_with_mean(df, ['MachineHoursCurrentMeter'])
 
     # Dropping irrelevant columns
-    df = df.drop(dropped_coumns, axis=1)
-    df = remove_columns_with_many_nulls(df, 0.7)
+    #df = df.drop(dropped_coumns, axis=1)
+    #df = remove_columns_with_many_nulls(df, 0.7)
 
     return df
 
@@ -176,7 +176,7 @@ def preprocess_validation_data(df, dropped_coumns):
     df = replace_null_with_mean(df, ['MachineHoursCurrentMeter'])
 
     # Dropping irrelevant columns
-    df = df.drop(dropped_coumns, axis=1)
-    df = remove_columns_with_many_nulls(df, 0.7)
+    #df = df.drop(dropped_coumns, axis=1)
+    #df = remove_columns_with_many_nulls(df, 0.7)
 
     return df

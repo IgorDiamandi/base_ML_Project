@@ -26,7 +26,7 @@ def get_feature_names(preprocessor):
 
 
 def train_and_evaluate_model(X_train, X_test, y_train, y_test, tree_depth, level_of_parallelism, number_of_trees,
-                             min_samples_split, min_samples_leaf, max_features):
+                             min_samples_split, min_samples_leaf, max_features, bootstrap):
     for depth in tree_depth:
         preprocessor = create_preprocessor(X_train)
         model = Pipeline(steps=[
@@ -38,7 +38,8 @@ def train_and_evaluate_model(X_train, X_test, y_train, y_test, tree_depth, level
                 max_depth=depth,
                 min_samples_leaf=min_samples_leaf,
                 min_samples_split=min_samples_split,
-                max_features=max_features))
+                max_features=max_features,
+                bootstrap=bootstrap))
         ])
 
         print('Fitting the model...')

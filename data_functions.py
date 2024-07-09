@@ -69,13 +69,15 @@ def mean_without_extremums(df, column):
 
 def replace_outliers_with_mean(df, columns, threshold=3):
     for column in columns:
-        mean_value = mean_without_extremums(df, column)
-        z_scores = zscore(df[column])
-        outliers = np.abs(z_scores) > threshold
-        #print(f'Column: {column}')
-        #print(f'Outliers - Mean without extremums: {mean_value}')
-        #print(f'Outliers - {df.loc[outliers, column]}')
-        df.loc[outliers, column] = mean_value
+        if np.issubdtype(df[column].dtype, np.number):
+            mean_value = mean_without_extremums(df, column)
+            z_scores = zscore(df[column])
+            outliers = np.abs(z_scores) > threshold
+            # Cast mean_value to the column's dtype
+            df[column] = df[column].astype(float)
+            df.loc[outliers, column] = mean_value
+        else:
+            print(f"Column '{column}' is not numeric and will be skipped.")
 
     return df
 
@@ -116,6 +118,16 @@ def handle_missing_values(features):
     return features
 
 
+def extract_product_features(cell_text):
+    if '_' not in cell_text:
+        return 'none'
+    list_cell = cell_text.split('_')
+    if len(list_cell[0].split(',')) > 1:
+        return list_cell[0].split(',')[1]
+    else:
+        return 'none'
+
+
 def encode_categorical_variables(features):
     # Convert date columns to separate year, month, and day columns
     date_cols = [col for col in features.columns if 'date' in col.lower()]
@@ -137,6 +149,8 @@ def encode_categorical_variables(features):
     return features
 
 
+
+
 def preprocess_data(df, dropped_coumns):
     #df = df.set_index('SalesID')
 
@@ -144,39 +158,20 @@ def preprocess_data(df, dropped_coumns):
     machine_id_counts = df['MachineID'].value_counts().reset_index()
     machine_id_counts.columns = ['MachineID', 'MachineID_Count']
     df = df.merge(machine_id_counts, on='MachineID', how='left').drop('MachineID', axis=1)
-    # Converting YearMade to MachineAge and cleaning up corrupted values
+
+   # Converting YearMade to MachineAge and cleaning up corrupted values
     df['MachineAge'] = datetime.now().year - df['YearMade']
     df = df.drop(['YearMade'], axis=1)
     df = replace_outliers_with_mean(df, ['MachineAge'], 1)
 
     # Handle outliers and missing values
-    df = handle_outliers_iqr(df, ['SalePrice', 'MachineHoursCurrentMeter'])
-    df = replace_null_with_mean(df, ['MachineHoursCurrentMeter'])
+    if 'SalePrice' in df.columns:
+        df = handle_outliers_iqr(df, ['SalePrice', 'MachineHoursCurrentMeter'])
+    else:
+        df = handle_outliers_iqr(df, ['MachineHoursCurrentMeter'])
 
     # Dropping irrelevant columns
-    #df = df.drop(dropped_coumns, axis=1)
-    #df = remove_columns_with_many_nulls(df, 0.7)
-
-    return df
-
-def preprocess_validation_data(df, dropped_coumns):
-    #df = df.set_index('SalesID')
-
-    # Converting MachineId to Sales count indicator
-    machine_id_counts = df['MachineID'].value_counts().reset_index()
-    machine_id_counts.columns = ['MachineID', 'MachineID_Count']
-    df = df.merge(machine_id_counts, on='MachineID', how='left').drop('MachineID', axis=1)
-    # Converting YearMade to MachineAge and cleaning up corrupted values
-    df['MachineAge'] = datetime.now().year - df['YearMade']
-    df = df.drop(['YearMade'], axis=1)
-    df = replace_outliers_with_mean(df, ['MachineAge'], 1)
-
-    # Handle outliers and missing values
-    df = handle_outliers_iqr(df, ['MachineHoursCurrentMeter'])
-    df = replace_null_with_mean(df, ['MachineHoursCurrentMeter'])
-
-    # Dropping irrelevant columns
-    #df = df.drop(dropped_coumns, axis=1)
-    #df = remove_columns_with_many_nulls(df, 0.7)
+    df = df.drop(dropped_coumns, axis=1)
+    df['product_type'] = df['fiProductClassDesc'].apply(extract_product_features)
 
     return df

@@ -1,21 +1,20 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from data_functions import load_and_extract_data, preprocess_data, handle_missing_values, encode_categorical_variables, \
-    preprocess_validation_data
+from data_functions import load_and_extract_data, preprocess_data, handle_missing_values, encode_categorical_variables
 from model_functions import train_and_evaluate_model
 
 # Constants
-LEVEL_OF_PARALLELISM = 20
+LEVEL_OF_PARALLELISM = -1
 NUMBER_OF_TREES = 100
-TREE_DEPTH = [10]
-MIN_SAMPLES_SPLIT = 7
-MIN_SAMPLES_LEAF = 5
-MAX_FEATURES = 0.6
+TREE_DEPTH = [16]
+MIN_SAMPLES_SPLIT = 3
+MIN_SAMPLES_LEAF = 3
+MAX_FEATURES = 0.7
 BOOTSTRAP = False
 DATA_PATH = 'Data\\train.zip'
 EXTRACT_PATH = 'Data'
 OUTPUT_PATH = 'Data\\fixed.csv'
-DROPPED_COLUMNS = ['Forks', 'Ride_Control', 'Transmission', 'Coupler']
+DROPPED_COLUMNS = ['ProductGroupDesc','Forks']
 TARGET_COLUMN = 'SalePrice'
 
 df = load_and_extract_data(DATA_PATH, EXTRACT_PATH)
@@ -23,20 +22,18 @@ df = preprocess_data(df, DROPPED_COLUMNS)
 
 target = df[TARGET_COLUMN]
 features = df.drop(columns=[TARGET_COLUMN])
-features = handle_missing_values(features)
 features = encode_categorical_variables(features)
 
 features.to_csv(OUTPUT_PATH, index=False)
-
-X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.3, random_state=100)
+features.info()
+X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.5, random_state=100)
 
 model = train_and_evaluate_model(X_train, X_test, y_train, y_test, TREE_DEPTH, LEVEL_OF_PARALLELISM, NUMBER_OF_TREES,
-                                 MIN_SAMPLES_LEAF, MIN_SAMPLES_SPLIT, MAX_FEATURES, BOOTSTRAP)
+                               MIN_SAMPLES_LEAF, MIN_SAMPLES_SPLIT, MAX_FEATURES, BOOTSTRAP)
 
-#Use model on the validation data
+# Use model on the validation data
 df_valid = pd.read_csv('Data\\valid.csv')
-df_valid = preprocess_validation_data(df_valid, DROPPED_COLUMNS)
-df_valid = handle_missing_values(df_valid)
+df_valid = preprocess_data(df_valid, DROPPED_COLUMNS)
 df_valid = encode_categorical_variables(df_valid)
 
 X_valid = df_valid

@@ -35,7 +35,6 @@ def train_and_evaluate_model(X_train, X_test, y_train, y_test, tree_depth, level
         rmse_test = get_rmse(y_test, y_test_pred)
         rmse_train = get_rmse(y_train, y_train_pred)
 
-        print(f'Tree depth - {depth}')
         print(f'STD Test - {y_test.std()}')
         print(f'STD Train - {y_train.std()}')
         print(f'RMSE Test - {rmse_test}')

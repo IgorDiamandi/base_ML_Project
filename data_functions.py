@@ -97,29 +97,6 @@ def load_and_extract_data(zip_path, extract_path):
     return df
 
 
-def preprocess_data(df, dropped_coumns):
-    df = df.set_index('SalesID')
-
-    # Converting MachineId to Sales count indicator
-    machine_id_counts = df['MachineID'].value_counts().reset_index()
-    machine_id_counts.columns = ['MachineID', 'MachineID_Count']
-    df = df.merge(machine_id_counts, on='MachineID', how='left').drop('MachineID', axis=1)
-    # Converting YearMade to MachineAge and cleaning up corrupted values
-    df['MachineAge'] = datetime.now().year - df['YearMade']
-    df = df.drop(['YearMade'], axis=1)
-    df = replace_outliers_with_mean(df, ['MachineAge'], 1)
-
-    # Handle outliers and missing values
-    df = handle_outliers_iqr(df, ['SalePrice', 'MachineHoursCurrentMeter'])
-    df = replace_null_with_mean(df, ['MachineHoursCurrentMeter'])
-
-    # Dropping irrelevant columns
-    df = df.drop(dropped_coumns, axis=1)
-    df = remove_columns_with_many_nulls(df, 0.7)
-
-    return df
-
-
 def handle_missing_values(features):
     numeric_cols = features.select_dtypes(include=['number']).columns
     non_numeric_cols = features.select_dtypes(exclude=['number']).columns
@@ -144,7 +121,24 @@ def encode_categorical_variables(features):
 
     return features
 
-def preprocess_validation_data(df, dropped_coumns):
+
+def split_product_class_series(series):
+    equipment_type = []
+    details = []
+
+    for item in series:
+        if pd.isna(item):
+            equipment_type.append(None)
+            details.append(None)
+        else:
+            split_item = item.split(' - ', 1)
+            equipment_type.append(split_item[0])
+            details.append(split_item[1] if len(split_item) > 1 else None)
+
+    return pd.Series(equipment_type), pd.Series(details)
+
+
+def preprocess_data(df, dropped_coumns):
     #df = df.set_index('SalesID')
 
     # Converting MachineId to Sales count indicator
@@ -157,11 +151,16 @@ def preprocess_validation_data(df, dropped_coumns):
     df = replace_outliers_with_mean(df, ['MachineAge'], 1)
 
     # Handle outliers and missing values
-    df = handle_outliers_iqr(df, ['MachineHoursCurrentMeter'])
+    if 'SalePrice' in df.columns:
+        df = handle_outliers_iqr(df, ['SalePrice', 'MachineHoursCurrentMeter'])
+    else:
+        df = handle_outliers_iqr(df, ['MachineHoursCurrentMeter'])
     df = replace_null_with_mean(df, ['MachineHoursCurrentMeter'])
+
+    df['ProductClassName'],df['ProductClassCharacteristic'] = split_product_class_series(df['fiProductClassDesc'])
 
     # Dropping irrelevant columns
     df = df.drop(dropped_coumns, axis=1)
-    df = remove_columns_with_many_nulls(df, 0.7)
+    #df = remove_columns_with_many_nulls(df, 0.7)
 
     return df

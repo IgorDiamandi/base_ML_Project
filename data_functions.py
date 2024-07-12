@@ -1,5 +1,6 @@
 import pandas as pd
 from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import LabelEncoder
 
 
 # Function to retrieve statistic parameters from numerical columns of the train dataframe
@@ -78,3 +79,11 @@ def split_product_class_series(series):
             details.append(split_item[1] if len(split_item) > 1 else None)
 
     return pd.Series(equipment_type), pd.Series(details)
+
+def replace_nan_with_string(df):
+    le = LabelEncoder()
+    for col in df.columns:
+        if df[col].dtype == 'object':
+            if df[col].apply(type).nunique() > 1:
+                df[col] = df[col].fillna('Missing').astype(str)
+            df[col] = le.fit_transform(df[col])

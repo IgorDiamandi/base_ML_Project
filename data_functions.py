@@ -1,8 +1,14 @@
 import pandas as pd
+import re
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import mean_squared_error
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder
-import category_encoders as ce
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, TargetEncoder
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.pipeline import Pipeline
+
+
+#import category_encoders as ce
 
 # Function to retrieve statistic parameters from numerical columns of the train dataframe
 def compute_statistics(df):
@@ -81,6 +87,7 @@ def split_product_class_series(series):
 
     return pd.Series(equipment_type), pd.Series(details)
 
+
 def replace_nan_with_string(df):
     le = LabelEncoder()
     for col in df.columns:
@@ -95,12 +102,12 @@ def apply_target_encoding(df_train, df_test, df_valid, target_column, columns_to
     X_train = df_train.drop(target_column, axis=1)
     y_train = df_train[target_column]
 
-    target_encoder = ce.TargetEncoder(columns_to_encode)
+    target_encoder = TargetEncoder(columns_to_encode)
     X_train_encoded = target_encoder.fit_transform(X_train, y_train)
     X_test_encoded = target_encoder.transform(df_test.drop(target_column, axis=1))
     X_valid_encoded = target_encoder.transform(df_valid.drop(target_column, axis=1))
 
-    X_train_encoded= pd.concat([X_train_encoded, y_train.reset_index(drop=True)], axis=1)
+    X_train_encoded = pd.concat([X_train_encoded, y_train.reset_index(drop=True)], axis=1)
     X_test_encoded = pd.concat([X_test_encoded, df_test[target_column].reset_index(drop=True)], axis=1)
     X_valid_encoded = pd.concat([X_valid_encoded, df_valid[target_column].reset_index(drop=True)], axis=1)
 
@@ -110,8 +117,8 @@ def apply_target_encoding(df_train, df_test, df_valid, target_column, columns_to
 def apply_one_hot_encoder(df_train, df_test, df_valid, columns_to_encode):
     one_hot_encoder = OneHotEncoder(categories='auto', handle_unknown='ignore')
     preprocessor = ColumnTransformer(transformers=[
-            ('onehot', one_hot_encoder, columns_to_encode),
-        ],
+        ('onehot', one_hot_encoder, columns_to_encode),
+    ],
         remainder='passthrough'
     )
     X_train_encoded = preprocessor.fit_transform(df_train)
@@ -122,3 +129,92 @@ def apply_one_hot_encoder(df_train, df_test, df_valid, columns_to_encode):
     X_valid_encoded_df = pd.DataFrame(X_valid_encoded, columns=preprocessor.get_feature_names_out())
 
     return X_train_encoded_df, X_Test_encoded_df, X_valid_encoded_df;
+
+
+def unite_sparse_columns(df, columns_to_unite, new_column_name):
+    columns_to_unite = [col for col in columns_to_unite if col != new_column_name]
+
+    existing_columns = [col for col in columns_to_unite if col in df.columns]
+    missing_columns = [col for col in columns_to_unite if col not in df.columns]
+
+    if missing_columns:
+        print(f"Warning: The following columns are missing and will be ignored: {missing_columns}")
+
+    if not existing_columns:
+        raise ValueError("None of the specified columns to unite exist in the DataFrame.")
+
+    df[new_column_name + '_non_null_count'] = df[existing_columns].notnull().sum(axis=1)
+
+    df[new_column_name + '_any_non_null'] = df[existing_columns].notnull().any(axis=1).astype(int)
+
+    if df[existing_columns].apply(lambda col: col.map(lambda x: isinstance(x, (int, float)))).all().all():
+        df[new_column_name + '_sum'] = df[existing_columns].sum(axis=1, skipna=True)
+
+    if df[existing_columns].apply(lambda col: col.map(lambda x: isinstance(x, str))).all().all():
+        df[new_column_name + '_mode'] = df[existing_columns].mode(axis=1)[0]
+
+    df = df.drop(columns=existing_columns)
+
+    return df
+
+
+def missing_values_imputation(df, target_column, feature_columns):
+
+    df_notnull = df.dropna(subset=[target_column])
+    df_null = df[df[target_column].isnull()]
+
+    if df_null.empty:
+        return df
+
+    X = df_notnull[feature_columns]
+    y = df_notnull[target_column]
+    X_null = df_null[feature_columns]
+
+    categorical_features = [col for col in feature_columns if df[col].dtype == 'object']
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
+        ],
+        remainder='passthrough'
+    )
+
+    model = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('classifier', DecisionTreeClassifier(random_state=0))
+    ])
+
+    model.fit(X, y)
+
+    df.loc[df[target_column].isnull(), target_column] = model.predict(X_null)
+
+    return df
+
+
+def split_fiProductClassDesc(df, column_name):
+    # Function to parse each value in the fiProductClassDesc column
+    def parse_fiProductClassDesc(value):
+        match = re.match(r'^(.*) - (\d+\.\d+) to (\d+\.\d+) (.*)$', value)
+        if match:
+            category, low_value, high_value, characteristic = match.groups()
+            return category, float(low_value), float(high_value), characteristic
+        else:
+            return None, None, None, None
+
+    parsed_values = df[column_name].apply(parse_fiProductClassDesc)
+
+    df['Category'] = parsed_values.apply(lambda x: x[0])
+    df['LowValue'] = parsed_values.apply(lambda x: x[1])
+    df['HighValue'] = parsed_values.apply(lambda x: x[2])
+    df['Characteristic'] = parsed_values.apply(lambda x: x[3])
+
+    unique_characteristics = df['Characteristic'].dropna().unique()
+    for characteristic in unique_characteristics:
+        df[f'post_fi_{characteristic}'] = df.apply(
+            lambda row: f"{row['LowValue']} to {row['HighValue']}" if row['Characteristic'] == characteristic else None,
+            axis=1
+        )
+
+    df = df.drop(columns=['LowValue', 'HighValue', 'Characteristic'])
+
+    return df

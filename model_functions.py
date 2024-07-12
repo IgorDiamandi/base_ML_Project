@@ -30,5 +30,6 @@ def train_and_evaluate_model(X_train, X_test, y_train, y_test, tree_depth, level
         print(f'STD Train - {y_train.std()}')
         print(f'RMSE Test - {rmse_test}')
         print(f'RMSE Train - {rmse_train}')
+        print(f'Test/Train Ratio - {1-rmse_train/rmse_test}')
 
     return model

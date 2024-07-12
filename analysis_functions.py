@@ -1,37 +1,7 @@
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-#from statsmodels.stats.outliers_influence import variance_inflation_factor
-
-
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.model_selection import train_test_split
-
-# Create example DataFrame with an additional feature
-df = pd.DataFrame({
-    'ProductSize': ['Medium', 'Small', None, 'Large/Medium', 'Mini', 'Compact', None, None],
-
-})
-
-# Separate rows with and without null values
-df_notnull = df.dropna(subset=['ProductSize'])
-df_null = df[df['ProductSize'].isnull()]
-
-# Prepare the data for modeling
-X = df_notnull[['OtherFeature']]
-y = df_notnull['ProductSize']
-X_null = df_null[['OtherFeature']]
-
-# Train a simple decision tree classifier
-model = DecisionTreeClassifier()
-model.fit(X, y)
-
-# Predict the missing values
-df.loc[df['ProductSize'].isnull(), 'ProductSize_pred'] = model.predict(X_null)
-
-print("\nImputation Based on Other Features:")
-print(df)
-
+from scipy.stats import ks_2samp
 
 
 def plot_feature_target_correlations(target, features):
@@ -56,9 +26,16 @@ def plot_feature_target_correlations(target, features):
     plt.ylabel('Feature')
     plt.show()
 
-def calculate_vif(df, column):
-    features = df.drop(columns=[column])
-    vif_data  = pd.DataFrame()
-    vif_data['Feature'] = features.columns
-    vif_data['VIF'] = [variance_inflation_factor(features.values, i) for i in range(features.shape[1])]
-    return vif_data
+#def calculate_vif(df, column):
+#    features = df.drop(columns=[column])
+#    vif_data  = pd.DataFrame()
+#    vif_data['Feature'] = features.columns
+#    vif_data['VIF'] = [variance_inflation_factor(features.values, i) for i in range(features.shape[1])]
+#    return vif_data
+
+def ks_test_comparison(train, valid, features):
+    results = {}
+    for feature in features:
+        statistic, p_value = ks_2samp(train[feature], valid[feature])
+        results[feature] = {'KS Statistic': statistic, 'p-value': p_value}
+    return pd.DataFrame(results).transpose()

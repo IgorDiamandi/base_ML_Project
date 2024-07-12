@@ -1,16 +1,15 @@
 import pandas as pd
 import re
 from sklearn.compose import ColumnTransformer
+from sklearn.feature_extraction import FeatureHasher
+from sklearn.impute import SimpleImputer
 from sklearn.metrics import mean_squared_error
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder, TargetEncoder
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder
 from sklearn.pipeline import Pipeline
+from sklearn.tree import DecisionTreeClassifier
 
 
-#import category_encoders as ce
 
-# Function to retrieve statistic parameters from numerical columns of the train dataframe
 def compute_statistics(df):
     numeric_df = df.select_dtypes(include='number')
 
@@ -18,7 +17,6 @@ def compute_statistics(df):
     iqr_values = numeric_df.quantile(0.75) - numeric_df.quantile(0.25)
     zscore_values = (numeric_df.mean() / numeric_df.std()).mean()
 
-    # Mean without extremes (assuming extremes are values outside 1.5*IQR)
     def mean_without_extremes(series):
         Q1 = series.quantile(0.25)
         Q3 = series.quantile(0.75)
@@ -35,8 +33,7 @@ def compute_statistics(df):
         'mean_without_extremes': mean_no_extremes_values
     })
 
-    statistics_df = statistics_df.T
-    return statistics_df
+    return statistics_df.T
 
 
 def get_stat_value(method, column, statistics_df):
@@ -45,26 +42,30 @@ def get_stat_value(method, column, statistics_df):
     return statistics_df.loc[method, column]
 
 
-def replace_outliers(df, column, method, statistics_df):
+def replace_outliers(dfs, column, method, statistics_df):
     stat_value = get_stat_value(method, column, statistics_df)
 
-    # Define the threshold for identifying outliers
-    Q1 = df[column].quantile(0.25)
-    Q3 = df[column].quantile(0.75)
-    IQR = Q3 - Q1
-    lower_bound = Q1 - 1.5 * IQR
-    upper_bound = Q3 + 1.5 * IQR
+    def replace_outlier_values(df, column, lower_bound, upper_bound, stat_value):
+        df[column] = df[column].apply(lambda x: stat_value if x < lower_bound or x > upper_bound else x)
+        return df
 
-    # Replace outliers with the statistical method value
-    df[column] = df[column].apply(lambda x: stat_value if x < lower_bound or x > upper_bound else x)
+    updated_dfs = []
+    for df in dfs:
+        Q1 = df[column].quantile(0.25)
+        Q3 = df[column].quantile(0.75)
+        IQR = Q3 - Q1
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
 
-    return df
+        updated_df = replace_outlier_values(df.copy(), column, lower_bound, upper_bound, stat_value)
+        updated_dfs.append(updated_df)
+
+    return updated_dfs
 
 
 def replace_nans(df, column, method, statistics_df):
     stat_value = get_stat_value(method, column, statistics_df)
     df[column] = df[column].fillna(stat_value)
-
     return df
 
 
@@ -89,47 +90,84 @@ def split_product_class_series(series):
 
 
 def replace_nan_with_string(df):
-    le = LabelEncoder()
     for col in df.columns:
         if df[col].dtype == 'object':
-            if df[col].apply(type).nunique() > 1:
-                df[col] = df[col].fillna('Missing').astype(str)
-            df[col] = le.fit_transform(df[col])
+            df[col] = df[col].fillna('Missing').astype(str)
+    return df
 
 
-# function to apply target encoding to selected columns
-def apply_target_encoding(df_train, df_test, df_valid, target_column, columns_to_encode):
-    X_train = df_train.drop(target_column, axis=1)
-    y_train = df_train[target_column]
+def calculate_target_encoding(df, target_column, columns_to_encode):
+    target_means = {}
+    global_mean = df[target_column].mean()
 
-    target_encoder = TargetEncoder(columns_to_encode)
-    X_train_encoded = target_encoder.fit_transform(X_train, y_train)
-    X_test_encoded = target_encoder.transform(df_test.drop(target_column, axis=1))
-    X_valid_encoded = target_encoder.transform(df_valid.drop(target_column, axis=1))
+    for col in columns_to_encode:
+        target_means[col] = df.groupby(col)[target_column].mean().to_dict()
+        target_means[col]['__global_mean__'] = global_mean
 
-    X_train_encoded = pd.concat([X_train_encoded, y_train.reset_index(drop=True)], axis=1)
-    X_test_encoded = pd.concat([X_test_encoded, df_test[target_column].reset_index(drop=True)], axis=1)
-    X_valid_encoded = pd.concat([X_valid_encoded, df_valid[target_column].reset_index(drop=True)], axis=1)
-
-    return X_train_encoded, X_test_encoded, X_valid_encoded;
+    return target_means
 
 
-def apply_one_hot_encoder(df_train, df_test, df_valid, columns_to_encode):
-    one_hot_encoder = OneHotEncoder(categories='auto', handle_unknown='ignore')
-    preprocessor = ColumnTransformer(transformers=[
-        ('onehot', one_hot_encoder, columns_to_encode),
-    ],
-        remainder='passthrough'
-    )
-    X_train_encoded = preprocessor.fit_transform(df_train)
-    X_train_encoded_df = pd.DataFrame(X_train_encoded, columns=preprocessor.get_feature_names_out())
-    X_Test_encoded = preprocessor.transform(df_test)
-    X_Test_encoded_df = pd.DataFrame(X_Test_encoded, columns=preprocessor.get_feature_names_out())
-    X_valid_encoded = preprocessor.transform(df_valid)
-    X_valid_encoded_df = pd.DataFrame(X_valid_encoded, columns=preprocessor.get_feature_names_out())
+def apply_target_encoding(df, target_means, columns_to_encode):
+    for col in columns_to_encode:
+        df[col + '_encoded'] = df[col].map(target_means[col]).fillna(target_means[col]['__global_mean__'])
 
-    return X_train_encoded_df, X_Test_encoded_df, X_valid_encoded_df;
+    return df
 
+
+def target_encode_train_test_valid(df_train, df_test, df_valid, target_column, columns_to_encode):
+    target_means = calculate_target_encoding(df_train, target_column, columns_to_encode)
+
+    df_train_encoded = apply_target_encoding(df_train.copy(), target_means, columns_to_encode)
+    df_test_encoded = apply_target_encoding(df_test.copy(), target_means, columns_to_encode)
+    df_valid_encoded = apply_target_encoding(df_valid.copy(), target_means, columns_to_encode)
+
+    return df_train_encoded, df_test_encoded, df_valid_encoded
+
+
+import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder
+
+
+def apply_one_hot_encoder(df_train, df_test, df_valid, columns_to_encode, n_features=10):
+    # Function to convert DataFrame columns to the required format for FeatureHasher
+    def convert_to_iterables(df, columns):
+        return df[columns].astype(str).values.tolist()
+
+    # Convert categorical columns to required format
+    df_train_hashed = convert_to_iterables(df_train, columns_to_encode)
+    df_test_hashed = convert_to_iterables(df_test, columns_to_encode)
+    df_valid_hashed = convert_to_iterables(df_valid, columns_to_encode)
+
+    # Use FeatureHasher for categorical columns
+    hasher = FeatureHasher(n_features=n_features, input_type='string')
+
+    # Transform the data
+    X_train_hashed = hasher.fit_transform(df_train_hashed)
+    X_test_hashed = hasher.transform(df_test_hashed)
+    X_valid_hashed = hasher.transform(df_valid_hashed)
+
+    # Combine the hashed features with the rest of the features
+    df_train_encoded = df_train.drop(columns=columns_to_encode).reset_index(drop=True)
+    df_test_encoded = df_test.drop(columns=columns_to_encode).reset_index(drop=True)
+    df_valid_encoded = df_valid.drop(columns=columns_to_encode).reset_index(drop=True)
+
+    # Convert sparse matrix to dense and create DataFrames
+    X_train_encoded_df = pd.concat([df_train_encoded, pd.DataFrame(X_train_hashed.toarray())], axis=1)
+    X_test_encoded_df = pd.concat([df_test_encoded, pd.DataFrame(X_test_hashed.toarray())], axis=1)
+    X_valid_encoded_df = pd.concat([df_valid_encoded, pd.DataFrame(X_valid_hashed.toarray())], axis=1)
+
+    # Ensure all column names are strings
+    X_train_encoded_df.columns = X_train_encoded_df.columns.astype(str)
+    X_test_encoded_df.columns = X_test_encoded_df.columns.astype(str)
+    X_valid_encoded_df.columns = X_valid_encoded_df.columns.astype(str)
+
+    # Ensure columns are in the same order
+    common_columns = X_train_encoded_df.columns
+    X_test_encoded_df = X_test_encoded_df[common_columns]
+    X_valid_encoded_df = X_valid_encoded_df[common_columns]
+
+    return X_train_encoded_df, X_test_encoded_df, X_valid_encoded_df
 
 def unite_sparse_columns(df, columns_to_unite, new_column_name):
     columns_to_unite = [col for col in columns_to_unite if col != new_column_name]
@@ -144,7 +182,6 @@ def unite_sparse_columns(df, columns_to_unite, new_column_name):
         raise ValueError("None of the specified columns to unite exist in the DataFrame.")
 
     df[new_column_name + '_non_null_count'] = df[existing_columns].notnull().sum(axis=1)
-
     df[new_column_name + '_any_non_null'] = df[existing_columns].notnull().any(axis=1).astype(int)
 
     if df[existing_columns].apply(lambda col: col.map(lambda x: isinstance(x, (int, float)))).all().all():
@@ -159,7 +196,6 @@ def unite_sparse_columns(df, columns_to_unite, new_column_name):
 
 
 def missing_values_imputation(df, target_column, feature_columns):
-
     df_notnull = df.dropna(subset=[target_column])
     df_null = df[df[target_column].isnull()]
 
@@ -171,28 +207,30 @@ def missing_values_imputation(df, target_column, feature_columns):
     X_null = df_null[feature_columns]
 
     categorical_features = [col for col in feature_columns if df[col].dtype == 'object']
+    numerical_features = [col for col in feature_columns if df[col].dtype != 'object']
 
     preprocessor = ColumnTransformer(
         transformers=[
-            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
-        ],
-        remainder='passthrough'
+            ('num', SimpleImputer(strategy='mean'), numerical_features),
+            ('cat', Pipeline(steps=[
+                ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+                ('onehot', OneHotEncoder(handle_unknown='ignore'))
+            ]), categorical_features)
+        ]
     )
 
     model = Pipeline(steps=[
         ('preprocessor', preprocessor),
-        ('classifier', DecisionTreeClassifier(random_state=0))
+        ('classifier', DecisionTreeClassifier(random_state=0, criterion='entropy'))
     ])
 
     model.fit(X, y)
-
     df.loc[df[target_column].isnull(), target_column] = model.predict(X_null)
 
     return df
 
 
 def split_fiProductClassDesc(df, column_name):
-    # Function to parse each value in the fiProductClassDesc column
     def parse_fiProductClassDesc(value):
         match = re.match(r'^(.*) - (\d+\.\d+) to (\d+\.\d+) (.*)$', value)
         if match:
@@ -208,13 +246,16 @@ def split_fiProductClassDesc(df, column_name):
     df['HighValue'] = parsed_values.apply(lambda x: x[2])
     df['Characteristic'] = parsed_values.apply(lambda x: x[3])
 
+    # Calculate the average of LowValue and HighValue
+    df['AverageValue'] = (df['LowValue'] + df['HighValue']) / 2
+
     unique_characteristics = df['Characteristic'].dropna().unique()
     for characteristic in unique_characteristics:
         df[f'post_fi_{characteristic}'] = df.apply(
-            lambda row: f"{row['LowValue']} to {row['HighValue']}" if row['Characteristic'] == characteristic else None,
+            lambda row: row['AverageValue'] if row['Characteristic'] == characteristic else None,
             axis=1
         )
 
-    df = df.drop(columns=['LowValue', 'HighValue', 'Characteristic'])
+    df = df.drop(columns=['LowValue', 'HighValue', 'Characteristic', 'AverageValue'])
 
     return df

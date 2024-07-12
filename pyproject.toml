@@ -10,6 +10,7 @@ python = "^3.11"
 pandas = "^2.2.2"
 scikit-learn = "^1.5.1"
 seaborn = "^0.13.2"
+statsmodels = "^0.14.2"
 
 
 [build-system]

@@ -1,16 +1,9 @@
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-
+from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 def plot_feature_target_correlations(target, features):
-    """
-    Plots the correlation between the target and each numeric feature in the features DataFrame.
-
-    Parameters:
-    target (pd.Series): The target variable.
-    features (pd.DataFrame): The DataFrame containing feature variables.
-    """
     # Select only numeric columns
     numeric_features = features.select_dtypes(include=['number'])
 
@@ -32,18 +25,9 @@ def plot_feature_target_correlations(target, features):
     plt.ylabel('Feature')
     plt.show()
 
-
-# Example usage
-data = {
-    'feature1': [1, 2, 3, 4, 5],
-    'feature2': [10, 20, 30, 40, 50],
-    'feature3': [100, 200, 300, 400, 500],
-    'feature4': ['a', 'b', 'c', 'd', 'e'],  # Non-numeric feature
-    'target': [10, 12, 14, 16, 18]
-}
-
-df = pd.DataFrame(data)
-target = df['target']
-features = df.drop(columns=['target'])
-
-plot_feature_target_correlations(target, features)
+def calculate_vif(df, column):
+    features = df.drop(columns=[column])
+    vif_data  = pd.DataFrame()
+    vif_data['Feature'] = features.columns
+    vif_data['VIF'] = [variance_inflation_factor(features.values, i) for i in range(features.shape[1])]
+    return vif_data

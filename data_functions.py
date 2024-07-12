@@ -1,7 +1,8 @@
 import pandas as pd
+from sklearn.compose import ColumnTransformer
 from sklearn.metrics import mean_squared_error
-from sklearn.preprocessing import LabelEncoder
-
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+import category_encoders as ce
 
 # Function to retrieve statistic parameters from numerical columns of the train dataframe
 def compute_statistics(df):
@@ -87,3 +88,37 @@ def replace_nan_with_string(df):
             if df[col].apply(type).nunique() > 1:
                 df[col] = df[col].fillna('Missing').astype(str)
             df[col] = le.fit_transform(df[col])
+
+
+# function to apply target encoding to selected columns
+def apply_target_encoding(df_train, df_test, df_valid, target_column, columns_to_encode):
+    X_train = df_train.drop(target_column, axis=1)
+    y_train = df_train[target_column]
+
+    target_encoder = ce.TargetEncoder(columns_to_encode)
+    X_train_encoded = target_encoder.fit_transform(X_train, y_train)
+    X_test_encoded = target_encoder.transform(df_test.drop(target_column, axis=1))
+    X_valid_encoded = target_encoder.transform(df_valid.drop(target_column, axis=1))
+
+    X_train_encoded= pd.concat([X_train_encoded, y_train.reset_index(drop=True)], axis=1)
+    X_test_encoded = pd.concat([X_test_encoded, df_test[target_column].reset_index(drop=True)], axis=1)
+    X_valid_encoded = pd.concat([X_valid_encoded, df_valid[target_column].reset_index(drop=True)], axis=1)
+
+    return X_train_encoded, X_test_encoded, X_valid_encoded;
+
+
+def apply_one_hot_encoder(df_train, df_test, df_valid, columns_to_encode):
+    one_hot_encoder = OneHotEncoder(categories='auto', handle_unknown='ignore')
+    preprocessor = ColumnTransformer(transformers=[
+            ('onehot', one_hot_encoder, columns_to_encode),
+        ],
+        remainder='passthrough'
+    )
+    X_train_encoded = preprocessor.fit_transform(df_train)
+    X_train_encoded_df = pd.DataFrame(X_train_encoded, columns=preprocessor.get_feature_names_out())
+    X_Test_encoded = preprocessor.transform(df_test)
+    X_Test_encoded_df = pd.DataFrame(X_Test_encoded, columns=preprocessor.get_feature_names_out())
+    X_valid_encoded = preprocessor.transform(df_valid)
+    X_valid_encoded_df = pd.DataFrame(X_valid_encoded, columns=preprocessor.get_feature_names_out())
+
+    return X_train_encoded_df, X_Test_encoded_df, X_valid_encoded_df;

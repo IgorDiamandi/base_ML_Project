@@ -1,9 +1,7 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from data_functions import split_product_class_series, compute_statistics, replace_outliers, replace_nans, \
-    replace_nan_with_string
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
+    replace_nan_with_string, apply_one_hot_encoder
 from model_functions import train_and_evaluate_model
 
 # Constants
@@ -13,6 +11,10 @@ TREE_DEPTH = 10
 MIN_SAMPLES_SPLIT = 4
 MIN_SAMPLES_LEAF = 2
 MAX_FEATURES = 0.5
+DUPLICATE_COLUMNS = ['fiBaseModel', 'fiSecondaryDesc', 'fiModelSeries', 'fiModelDescriptor']
+LOW_IMPORTANCE_COLUMNS = ['Thumb', 'Blade_Width']
+HOT_ENCODE_COLUMNS = ['saledate', 'state', ]
+TARGET_ENCODE_COLUMNS = ['UsageBand', 'fiModelDesc', 'ProductSize', 'fiProductClassicDesc', 'Enclosure']
 
 
 DTYPE_SPEC = {
@@ -24,8 +26,13 @@ DTYPE_SPEC = {
 df = pd.read_csv('Data\\train.csv', dtype=DTYPE_SPEC)
 df_valid = pd.read_csv('Data\\valid.csv', dtype=DTYPE_SPEC)
 
-df.drop(['Thumb', 'Blade_Width'], axis=1, inplace=True)
-df_valid.drop(['Thumb','Blade_Width'], axis=1, inplace=True)
+# drop unimportant columns
+df.drop(LOW_IMPORTANCE_COLUMNS, axis=1, inplace=True)
+df_valid.drop(LOW_IMPORTANCE_COLUMNS, axis=1, inplace=True)
+
+# drop duplicated columns
+df.drop(DUPLICATE_COLUMNS, axis=1, inplace=True)
+df_valid.drop(DUPLICATE_COLUMNS, axis=1, inplace=True)
 
 # convert 'YearMade' column to 'Age'
 df['Age'] = 2024 - df['YearMade']
@@ -37,18 +44,14 @@ df_valid['AgeAtLastSale'] = (pd.to_datetime(df_valid['saledate']) - pd.to_dateti
 df_valid.drop('YearMade', axis=1, inplace=True)
 
 # split 'fiProductDesc' column
-df['ProductClassName'],df['ProductClassCharacteristic'] = split_product_class_series(df['fiProductClassDesc'])
-df_valid['ProductClassName'],df_valid['ProductClassCharacteristic'] = split_product_class_series(df_valid['fiProductClassDesc'])
+#df['ProductClassName'],df['ProductClassCharacteristic'] = split_product_class_series(df['fiProductClassDesc'])
+#df_valid['ProductClassName'],df_valid['ProductClassCharacteristic'] = split_product_class_series(df_valid['fiProductClassDesc'])
 
 # convert 'MachineID' column into 'TimesAppearing' column
 df['TimesAppearing'] = df['MachineID'].map(df['MachineID'].value_counts())
 df.drop('MachineID', axis=1, inplace=True)
 df_valid['TimesAppearing'] = df_valid['MachineID'].map(df_valid['MachineID'].value_counts())
 df_valid.drop('MachineID', axis=1, inplace=True)
-
-# remove duplicated columns: 'ProductGroupDesc'
-df.drop(['ProductGroupDesc','ProductClassName'], axis=1, inplace=True)
-df_valid.drop(['ProductGroupDesc','ProductClassName'], axis=1, inplace=True)
 
 # replace NaN with 0 in 'ID' columns
 df[['datasource', 'auctioneerID']] = df[['datasource', 'auctioneerID']].fillna(0.0)
@@ -87,24 +90,8 @@ replace_nan_with_string(X_train)
 replace_nan_with_string(X_test)
 replace_nan_with_string(df_valid)
 
-# convert categorical values to lables in all 3 dataframes
-categorical_cols = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
-# Create the column transformer with OneHotEncoder
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('cat', OneHotEncoder(handle_unknown='error'), categorical_cols)
-    ],
-    remainder='passthrough'
-)
-# Fit the preprocessor on X_train and transform all dataframes
-X_train_transformed = preprocessor.fit_transform(X_train)
-X_test_transformed = preprocessor.transform(X_test)
-X_valid_transformed = preprocessor.transform(df_valid)
-
-# Convert transformed arrays back to dataframes with proper column names
-X_train_transformed = pd.DataFrame(X_train_transformed, columns=preprocessor.get_feature_names_out())
-X_test_transformed = pd.DataFrame(X_test_transformed, columns=preprocessor.get_feature_names_out())
-X_valid_transformed = pd.DataFrame(X_valid_transformed, columns=preprocessor.get_feature_names_out())
+X_train_transformed, X_test_transformed, X_valid_transformed = (
+    apply_one_hot_encoder(X_train, X_test, df_valid, HOT_ENCODE_COLUMNS))
 
 # Train model
 model = train_and_evaluate_model(X_train_transformed, X_test_transformed, y_train, y_test, [TREE_DEPTH],

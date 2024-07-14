@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import re
 from sklearn.compose import ColumnTransformer
@@ -7,7 +8,6 @@ from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder
 from sklearn.pipeline import Pipeline
 from sklearn.tree import DecisionTreeClassifier
-
 
 
 def compute_statistics(df):
@@ -124,113 +124,108 @@ def target_encode_train_test_valid(df_train, df_test, df_valid, target_column, c
     return df_train_encoded, df_test_encoded, df_valid_encoded
 
 
-import pandas as pd
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
-
-
-def apply_one_hot_encoder(df_train, df_test, df_valid, columns_to_encode, n_features=10):
+def apply_one_hot_encoder(dataframes, columns_to_encode, n_features=350):
     # Function to convert DataFrame columns to the required format for FeatureHasher
     def convert_to_iterables(df, columns):
         return df[columns].astype(str).values.tolist()
 
-    # Convert categorical columns to required format
-    df_train_hashed = convert_to_iterables(df_train, columns_to_encode)
-    df_test_hashed = convert_to_iterables(df_test, columns_to_encode)
-    df_valid_hashed = convert_to_iterables(df_valid, columns_to_encode)
+    # Convert categorical columns to required format for all DataFrames
+    hashed_dataframes = [convert_to_iterables(df, columns_to_encode) for df in dataframes]
 
     # Use FeatureHasher for categorical columns
     hasher = FeatureHasher(n_features=n_features, input_type='string')
 
     # Transform the data
-    X_train_hashed = hasher.fit_transform(df_train_hashed)
-    X_test_hashed = hasher.transform(df_test_hashed)
-    X_valid_hashed = hasher.transform(df_valid_hashed)
+    hashed_features = [hasher.fit_transform(hashed_dataframes[0])] + [hasher.transform(df) for df in hashed_dataframes[1:]]
 
     # Combine the hashed features with the rest of the features
-    df_train_encoded = df_train.drop(columns=columns_to_encode).reset_index(drop=True)
-    df_test_encoded = df_test.drop(columns=columns_to_encode).reset_index(drop=True)
-    df_valid_encoded = df_valid.drop(columns=columns_to_encode).reset_index(drop=True)
-
-    # Convert sparse matrix to dense and create DataFrames
-    X_train_encoded_df = pd.concat([df_train_encoded, pd.DataFrame(X_train_hashed.toarray())], axis=1)
-    X_test_encoded_df = pd.concat([df_test_encoded, pd.DataFrame(X_test_hashed.toarray())], axis=1)
-    X_valid_encoded_df = pd.concat([df_valid_encoded, pd.DataFrame(X_valid_hashed.toarray())], axis=1)
-
-    # Ensure all column names are strings
-    X_train_encoded_df.columns = X_train_encoded_df.columns.astype(str)
-    X_test_encoded_df.columns = X_test_encoded_df.columns.astype(str)
-    X_valid_encoded_df.columns = X_valid_encoded_df.columns.astype(str)
+    encoded_dataframes = []
+    for i, df in enumerate(dataframes):
+        df_encoded = df.drop(columns=columns_to_encode).reset_index(drop=True)
+        df_hashed = pd.DataFrame(hashed_features[i].toarray())
+        df_encoded = pd.concat([df_encoded, df_hashed], axis=1)
+        df_encoded.columns = df_encoded.columns.astype(str)
+        encoded_dataframes.append(df_encoded)
 
     # Ensure columns are in the same order
-    common_columns = X_train_encoded_df.columns
-    X_test_encoded_df = X_test_encoded_df[common_columns]
-    X_valid_encoded_df = X_valid_encoded_df[common_columns]
+    common_columns = encoded_dataframes[0].columns
+    for i in range(1, len(encoded_dataframes)):
+        encoded_dataframes[i] = encoded_dataframes[i][common_columns]
 
-    return X_train_encoded_df, X_test_encoded_df, X_valid_encoded_df
-
-def unite_sparse_columns(df, columns_to_unite, new_column_name):
-    columns_to_unite = [col for col in columns_to_unite if col != new_column_name]
-
-    existing_columns = [col for col in columns_to_unite if col in df.columns]
-    missing_columns = [col for col in columns_to_unite if col not in df.columns]
-
-    if missing_columns:
-        print(f"Warning: The following columns are missing and will be ignored: {missing_columns}")
-
-    if not existing_columns:
-        raise ValueError("None of the specified columns to unite exist in the DataFrame.")
-
-    df[new_column_name + '_non_null_count'] = df[existing_columns].notnull().sum(axis=1)
-    df[new_column_name + '_any_non_null'] = df[existing_columns].notnull().any(axis=1).astype(int)
-
-    if df[existing_columns].apply(lambda col: col.map(lambda x: isinstance(x, (int, float)))).all().all():
-        df[new_column_name + '_sum'] = df[existing_columns].sum(axis=1, skipna=True)
-
-    if df[existing_columns].apply(lambda col: col.map(lambda x: isinstance(x, str))).all().all():
-        df[new_column_name + '_mode'] = df[existing_columns].mode(axis=1)[0]
-
-    df = df.drop(columns=existing_columns)
-
-    return df
+    return encoded_dataframes
 
 
-def missing_values_imputation(df, target_column, feature_columns):
-    df_notnull = df.dropna(subset=[target_column])
-    df_null = df[df[target_column].isnull()]
+def unite_sparse_columns(dataframes, columns_to_unite, new_column_name):
+    def unite_columns(df):
+        columns_to_unite_filtered = [col for col in columns_to_unite if col != new_column_name]
 
-    if df_null.empty:
+        existing_columns = [col for col in columns_to_unite_filtered if col in df.columns]
+        missing_columns = [col for col in columns_to_unite_filtered if col not in df.columns]
+
+        if missing_columns:
+            print(f"Warning: The following columns are missing and will be ignored: {missing_columns}")
+
+        if not existing_columns:
+            raise ValueError("None of the specified columns to unite exist in the DataFrame.")
+
+        # Replace "None or Unspecified" with np.nan and explicitly set the type to avoid downcasting issues
+        df[existing_columns] = df[existing_columns].replace("None or Unspecified", np.nan).astype(object)
+
+        df[new_column_name + '_non_null_count'] = df[existing_columns].notnull().sum(axis=1)
+        df[new_column_name + '_any_non_null'] = df[existing_columns].notnull().any(axis=1).astype(int)
+
+        if df[existing_columns].apply(lambda col: col.map(lambda x: isinstance(x, (int, float)))).all().all():
+            df[new_column_name + '_sum'] = df[existing_columns].sum(axis=1, skipna=True)
+
+        if df[existing_columns].apply(lambda col: col.map(lambda x: isinstance(x, str))).all().all():
+            df[new_column_name + '_mode'] = df[existing_columns].mode(axis=1)[0]
+
+        df = df.drop(columns=existing_columns)
+
         return df
 
-    X = df_notnull[feature_columns]
-    y = df_notnull[target_column]
-    X_null = df_null[feature_columns]
-
-    categorical_features = [col for col in feature_columns if df[col].dtype == 'object']
-    numerical_features = [col for col in feature_columns if df[col].dtype != 'object']
-
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', SimpleImputer(strategy='mean'), numerical_features),
-            ('cat', Pipeline(steps=[
-                ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
-                ('onehot', OneHotEncoder(handle_unknown='ignore'))
-            ]), categorical_features)
-        ]
-    )
-
-    model = Pipeline(steps=[
-        ('preprocessor', preprocessor),
-        ('classifier', DecisionTreeClassifier(random_state=0, criterion='entropy'))
-    ])
-
-    model.fit(X, y)
-    df.loc[df[target_column].isnull(), target_column] = model.predict(X_null)
-
-    return df
+    return [unite_columns(df.copy()) for df in dataframes]
 
 
-def split_fiProductClassDesc(df, column_name):
+def missing_values_imputation(dataframes, target_column, feature_columns):
+    def impute_missing_values(df):
+        df_notnull = df.dropna(subset=[target_column])
+        df_null = df[df[target_column].isnull()]
+
+        if df_null.empty:
+            return df
+
+        X = df_notnull[feature_columns]
+        y = df_notnull[target_column]
+        X_null = df_null[feature_columns]
+
+        categorical_features = [col for col in feature_columns if df[col].dtype == 'object']
+        numerical_features = [col for col in feature_columns if df[col].dtype != 'object']
+
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('num', SimpleImputer(strategy='mean'), numerical_features),
+                ('cat', Pipeline(steps=[
+                    ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+                    ('onehot', OneHotEncoder(handle_unknown='ignore'))
+                ]), categorical_features)
+            ]
+        )
+
+        model = Pipeline(steps=[
+            ('preprocessor', preprocessor),
+            ('classifier', DecisionTreeClassifier(random_state=0, criterion='entropy'))
+        ])
+
+        model.fit(X, y)
+        df.loc[df[target_column].isnull(), target_column] = model.predict(X_null)
+
+        return df
+
+    return [impute_missing_values(df.copy()) for df in dataframes]
+
+
+def split_fiProductClassDesc(dataframes, column_name):
     def parse_fiProductClassDesc(value):
         match = re.match(r'^(.*) - (\d+\.\d+) to (\d+\.\d+) (.*)$', value)
         if match:
@@ -239,23 +234,26 @@ def split_fiProductClassDesc(df, column_name):
         else:
             return None, None, None, None
 
-    parsed_values = df[column_name].apply(parse_fiProductClassDesc)
+    def split_column(df):
+        parsed_values = df[column_name].apply(parse_fiProductClassDesc)
 
-    df['Category'] = parsed_values.apply(lambda x: x[0])
-    df['LowValue'] = parsed_values.apply(lambda x: x[1])
-    df['HighValue'] = parsed_values.apply(lambda x: x[2])
-    df['Characteristic'] = parsed_values.apply(lambda x: x[3])
+        df['Category'] = parsed_values.apply(lambda x: x[0])
+        df['LowValue'] = parsed_values.apply(lambda x: x[1])
+        df['HighValue'] = parsed_values.apply(lambda x: x[2])
+        df['Characteristic'] = parsed_values.apply(lambda x: x[3])
 
-    # Calculate the average of LowValue and HighValue
-    df['AverageValue'] = (df['LowValue'] + df['HighValue']) / 2
+        # Calculate the average of LowValue and HighValue
+        df['AverageValue'] = (df['LowValue'] + df['HighValue']) / 2
 
-    unique_characteristics = df['Characteristic'].dropna().unique()
-    for characteristic in unique_characteristics:
-        df[f'post_fi_{characteristic}'] = df.apply(
-            lambda row: row['AverageValue'] if row['Characteristic'] == characteristic else None,
-            axis=1
-        )
+        unique_characteristics = df['Characteristic'].dropna().unique()
+        for characteristic in unique_characteristics:
+            df[f'post_fi_{characteristic}'] = df.apply(
+                lambda row: row['AverageValue'] if row['Characteristic'] == characteristic else None,
+                axis=1
+            )
 
-    df = df.drop(columns=['LowValue', 'HighValue', 'Characteristic', 'AverageValue'])
+        df = df.drop(columns=['LowValue', 'HighValue', 'Characteristic', 'AverageValue'])
 
-    return df
+        return df
+
+    return [split_column(df.copy()) for df in dataframes]

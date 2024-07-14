@@ -6,12 +6,12 @@ from data_functions import compute_statistics, replace_outliers, \
 from model_functions import train_and_evaluate_model
 
 # Constants
-LEVEL_OF_PARALLELISM = 18
+LEVEL_OF_PARALLELISM = -1
 NUMBER_OF_TREES = 100
-TREE_DEPTH = [16]
-MIN_SAMPLES_SPLIT = 4
-MIN_SAMPLES_LEAF = 4
-MAX_FEATURES = 0.5
+TREE_DEPTH = [17]
+MIN_SAMPLES_SPLIT = 2
+MIN_SAMPLES_LEAF = 1
+MAX_FEATURES = 0.8
 
 KILL_THEM_COLUMNS = ['uControl_any_non_null', 'uMounting_any_non_null', 'uHydraulics_non_null_count',
                      'uControl_non_null_count', 'fiProductClassDesc']
@@ -42,16 +42,14 @@ df = pd.read_csv('Data\\train.csv', dtype=DTYPE_SPEC)
 df_valid = pd.read_csv('Data\\valid.csv', dtype=DTYPE_SPEC)
 
 # product size handling
-df = split_fiProductClassDesc(df, 'fiProductClassDesc')
-df_valid = split_fiProductClassDesc(df_valid, 'fiProductClassDesc')
+df, df_valid = split_fiProductClassDesc([df,df_valid], 'fiProductClassDesc')
 
-df = missing_values_imputation(df, 'ProductSize', SIZE_FIT_COLUMNS)
-df_valid = missing_values_imputation(df_valid, 'ProductSize', SIZE_FIT_COLUMNS)
+
+df, df_valid = missing_values_imputation([df,df_valid], 'ProductSize', SIZE_FIT_COLUMNS)
 
 # grouping columns with technical details
 for new_column, columns in COLUMN_GROUPS.items():
-    df = unite_sparse_columns(df, columns, new_column)
-    df_valid = unite_sparse_columns(df_valid, columns, new_column)
+    df, df_valid = unite_sparse_columns([df, df_valid], columns, new_column)
 
 # drop unimportant columns
 df.drop(KILL_THEM_COLUMNS, axis=1, inplace=True)
@@ -82,8 +80,7 @@ df.drop(['saledate', 'YearMade'], axis=1, inplace=True)
 df_valid.drop(['saledate', 'YearMade'], axis=1, inplace=True)
 
 # usage_band handling
-df = missing_values_imputation(df, 'UsageBand', USAGE_FIT_COLUMNS)
-df_valid = missing_values_imputation(df_valid, 'UsageBand', USAGE_FIT_COLUMNS)
+df, df_valid = missing_values_imputation([df,df_valid], 'UsageBand', USAGE_FIT_COLUMNS)
 
 df.to_csv('Data\\df_PreSplit.csv', index=False)
 
@@ -123,7 +120,8 @@ X_train.to_csv('Data\\X_train.csv', index=False)
 
 # Apply one-hot encoding
 X_train_transformed, X_test_transformed, X_valid_transformed = (
-    apply_one_hot_encoder(X_train, X_test, df_valid, X_train.select_dtypes(exclude=['number']).columns.tolist()))
+    apply_one_hot_encoder([X_train, X_test, df_valid],
+                          X_train.select_dtypes(exclude=['number']).columns.tolist()))
 
 # Train model
 model,results_df = train_and_evaluate_model(X_train_transformed, X_test_transformed, y_train, y_test, TREE_DEPTH,

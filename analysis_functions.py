@@ -39,3 +39,9 @@ def ks_test_comparison(train, valid, features):
         statistic, p_value = ks_2samp(train[feature], valid[feature])
         results[feature] = {'KS Statistic': statistic, 'p-value': p_value}
     return pd.DataFrame(results).transpose()
+
+def print_unique_valued(df):
+    unique_counts = {col: df[col].nunique() for col in df.columns}
+    unique_counts_df = pd.DataFrame(list(unique_counts.items()), columns=['Column', 'UniqueValuesCount'])
+    unique_counts_df = unique_counts_df.sort_values(by='UniqueValuesCount', ascending=False).reset_index(drop=True)
+    print(unique_counts_df)

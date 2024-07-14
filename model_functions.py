@@ -2,6 +2,7 @@ from sklearn.ensemble import RandomForestRegressor
 from data_functions import get_rmse
 import logging
 import pandas as pd
+import numpy as np
 
 logging.basicConfig(level=logging.INFO)
 
@@ -33,8 +34,8 @@ def train_and_evaluate_model(X_train, X_test, y_train, y_test, tree_depth, level
 
         result = {
             'Tree Depth': depth,
-            'STD Test': y_test.std(),
-            'STD Train': y_train.std(),
+            'STD Test': np.expm1(y_test).std(),
+            'STD Train': np.expm1(y_train).std(),
             'RMSE Test': rmse_test,
             'RMSE Train': rmse_train,
             'Test/Train Ratio': 1 - rmse_train / rmse_test
@@ -42,8 +43,8 @@ def train_and_evaluate_model(X_train, X_test, y_train, y_test, tree_depth, level
         results.append(result)
 
         logging.info(f'Tree depth - {depth}')
-        logging.info(f'STD Test - {y_test.std()}')
-        logging.info(f'STD Train - {y_train.std()}')
+        logging.info(f'STD Test - {np.expm1(y_test).std()}')
+        logging.info(f'STD Train - {np.expm1(y_train).std()}')
         logging.info(f'RMSE Test - {rmse_test}')
         logging.info(f'RMSE Train - {rmse_train}')
         logging.info(f'Test/Train Ratio - {1 - rmse_train / rmse_test}')
